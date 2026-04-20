@@ -1,0 +1,7 @@
+requests==2.31.0
+beautifulsoup4==4.12.3
+pandas==2.2.2
+numpy==1.26.4
+geopy==2.4.1
+pymongo==4.7.2
+dnspython==2.6.1
