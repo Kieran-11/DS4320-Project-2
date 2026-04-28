@@ -1,4 +1,3 @@
-# DS4320-Project-2
 # DS 4320 Project 2: Predicting NCAA Basketball Game Outcomes at Neutral Sites
 
 **Executive Summary:** This repository contains a secondary dataset and analysis pipeline built to predict the outcome of NCAA Division I men's basketball games played at neutral sites. Game results from the 2015–2024 seasons were scraped from Sports-Reference, team-season efficiency ratings were pulled from Barttorvik (T-Rank), and travel distances from each team's home campus to the neutral venue were computed using geocoding and the haversine formula. The combined dataset was ingested into a MongoDB Atlas document database. An analysis pipeline (Jupyter notebook) then queries this database, engineers features, and applies machine learning classification to predict game winners — interrogating whether team quality metrics and travel burden explain outcomes at neutral venues where home-court advantage is absent.
