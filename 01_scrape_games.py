@@ -1,30 +1,24 @@
 """
 01_scrape_games.py
 ------------------
-Pulls neutral-site NCAAB game results from Barttorvik's game log endpoint.
+Pulls neutral-site NCAAB game results using the sportsreference package.
 
-Replaces the original Sports-Reference scraper, which now returns 403/404
-for automated requests. Barttorvik provides the same neutral-site game data
-via a free JSON API with no key required.
-
-Endpoint: https://barttorvik.com/getgames.php?year=YYYY&neutralonly=1&json=1
+Replaces web scraping entirely — sportsreference wraps Sports-Reference data
+locally without making live HTTP requests for historical seasons.
 
 Outputs: data/raw_games.csv
 
-Dependencies: pip install requests pandas
+Dependencies: pip install sportsreference pandas
 """
 
-import requests
 import pandas as pd
-import time
 import os
 import logging
 from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-SEASONS     = list(range(2015, 2025))   # 2014-15 through 2023-24
+SEASONS     = list(range(2015, 2025))
 OUTPUT_PATH = "data/raw_games.csv"
-SLEEP_SECONDS = 2                        # be polite to barttorvik
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 Path("logs").mkdir(exist_ok=True)
@@ -38,115 +32,96 @@ logging.basicConfig(
 )
 log = logging.getLogger("scrape_games")
 
-# ── Barttorvik game column mapping ─────────────────────────────────────────────
-# The JSON endpoint returns a list of lists. Column order as of 2024:
-# [date, away, away_pts, home, home_pts, ot, location_flag, ...]
-# location_flag: 'N' = neutral, '' = home game, '@' = away
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    )
-}
 
 def fetch_season(year: int) -> pd.DataFrame:
     """
-    Fetch all neutral-site games for a given season from Barttorvik.
-
-    The 'year' parameter is the ending year of the season
-    (e.g. 2024 = 2023-24 season).
+    Fetch all neutral-site games for a given season using sportsreference.
 
     Parameters
     ----------
     year : int
-        Season ending year (2015-2024).
+        Season ending year (e.g. 2024 = 2023-24 season).
 
     Returns
     -------
     pd.DataFrame
         One row per neutral-site game with winner, loser, scores, season.
     """
-    url = f"https://barttorvik.com/getgames.php?year={year}&neutralonly=1&json=1"
-    log.info(f"Fetching {year}: {url}")
+    try:
+        from sportsreference.ncaab.schedule import Schedule
+        from sportsreference.ncaab.teams import Teams
+    except ImportError:
+        log.error("sportsreference not installed. Run: pip install sportsreference")
+        raise
+
+    log.info(f"Fetching {year} season...")
+    rows = []
 
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-    except requests.exceptions.HTTPError as e:
-        log.warning(f"  HTTP error for {year}: {e}")
-        return pd.DataFrame()
+        teams = Teams(year=str(year))
+        team_list = list(teams)
+        log.info(f"  {len(team_list)} teams found for {year}")
     except Exception as e:
-        log.warning(f"  Error fetching {year}: {e}")
+        log.warning(f"  Could not load teams for {year}: {e}")
         return pd.DataFrame()
 
-    if not data:
-        log.warning(f"  Empty response for {year}")
-        return pd.DataFrame()
+    seen = set()  # deduplicate — each game appears in both teams' schedules
 
-    # Parse each game row
-    # Barttorvik game row structure (confirmed via inspection):
-    # index 0: date (YYYYMMDD string)
-    # index 1: team1 name
-    # index 2: team1 score
-    # index 3: team2 name
-    # index 4: team2 score
-    # index 5: number of overtimes
-    # index 6: location flag ('N' for neutral)
-    rows = []
-    for game in data:
+    for team in team_list:
         try:
-            if not isinstance(game, list) or len(game) < 7:
-                continue
-
-            date_raw  = str(game[0])
-            team1     = str(game[1])
-            pts1      = game[2]
-            team2     = str(game[3])
-            pts2      = game[4]
-            location  = str(game[6]) if len(game) > 6 else ""
-
-            # Only keep neutral-site games
-            if location != "N":
-                continue
-
-            # Determine winner/loser
-            try:
-                pts1 = float(pts1)
-                pts2 = float(pts2)
-            except (TypeError, ValueError):
-                continue
-
-            if pts1 > pts2:
-                winner, loser   = team1, team2
-                winner_pts, loser_pts = pts1, pts2
-            elif pts2 > pts1:
-                winner, loser   = team2, team1
-                winner_pts, loser_pts = pts2, pts1
-            else:
-                continue  # skip ties (shouldn't exist in CBB)
-
-            # Parse date
-            try:
-                date = pd.to_datetime(date_raw, format="%Y%m%d").strftime("%Y-%m-%d")
-            except Exception:
-                date = date_raw
-
-            rows.append({
-                "season":      year,
-                "date":        date,
-                "winner":      winner,
-                "loser":       loser,
-                "winner_pts":  winner_pts,
-                "loser_pts":   loser_pts,
-                "point_diff":  winner_pts - loser_pts,
-                "location":    "N",
-            })
-
+            schedule = Schedule(team.abbreviation, year=str(year))
         except Exception as e:
-            log.debug(f"  Row parse error: {e}")
+            log.debug(f"  Schedule error for {team.abbreviation}: {e}")
             continue
+
+        for game in schedule:
+            try:
+                # Only neutral-site games
+                if game.location != "Neutral":
+                    continue
+
+                # Build a dedup key so we don't add the same game twice
+                date_str = str(game.date)
+                opp = game.opponent_abbreviation or game.opponent_name or ""
+                key = tuple(sorted([team.abbreviation, opp, date_str]))
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                pts_scored   = game.points
+                pts_opponent = game.opponent_points
+
+                if pts_scored is None or pts_opponent is None:
+                    continue
+
+                # Determine winner/loser
+                if pts_scored > pts_opponent:
+                    winner     = team.name
+                    loser      = game.opponent_name or opp
+                    winner_pts = pts_scored
+                    loser_pts  = pts_opponent
+                elif pts_opponent > pts_scored:
+                    winner     = game.opponent_name or opp
+                    loser      = team.name
+                    winner_pts = pts_opponent
+                    loser_pts  = pts_scored
+                else:
+                    continue  # no ties in CBB
+
+                rows.append({
+                    "season":     year,
+                    "date":       date_str,
+                    "winner":     winner,
+                    "loser":      loser,
+                    "winner_pts": float(winner_pts),
+                    "loser_pts":  float(loser_pts),
+                    "point_diff": float(winner_pts) - float(loser_pts),
+                    "location":   "N",
+                })
+
+            except Exception as e:
+                log.debug(f"  Game parse error: {e}")
+                continue
 
     df = pd.DataFrame(rows)
     log.info(f"  → {len(df)} neutral-site games for {year}")
@@ -156,19 +131,21 @@ def fetch_season(year: int) -> pd.DataFrame:
 def main():
     """
     Main entry point. Fetches all seasons and writes combined CSV.
-    Logs progress and a summary on completion.
     """
     os.makedirs("data", exist_ok=True)
 
     all_seasons = []
     for year in SEASONS:
-        df = fetch_season(year)
-        if not df.empty:
-            all_seasons.append(df)
-        time.sleep(SLEEP_SECONDS)
+        try:
+            df = fetch_season(year)
+            if not df.empty:
+                all_seasons.append(df)
+        except Exception as e:
+            log.error(f"Failed season {year}: {e}")
+            continue
 
     if not all_seasons:
-        log.error("No data collected. Check network or barttorvik endpoint.")
+        log.error("No data collected.")
         return
 
     combined = pd.concat(all_seasons, ignore_index=True)
@@ -180,7 +157,7 @@ def main():
 
     log.info(f"\n{'='*50}")
     log.info(f"Saved {len(combined):,} neutral-site games to {OUTPUT_PATH}")
-    log.info(f"Seasons covered: {sorted(combined['season'].unique())}")
+    log.info(f"Seasons: {sorted(combined['season'].unique())}")
     log.info(f"Games per season:\n{combined.groupby('season').size().to_string()}")
     print(combined.head(10).to_string())
 
