@@ -59,6 +59,8 @@ This project sits at the intersection of sports analytics, geography, and data e
 
 ### Item 4 — Readings Summary Table
 
+Readings Link: https://myuva-my.sharepoint.com/:f:/g/personal/rrx5eg_virginia_edu/IgAOwL3EtU1LTLCWKuCJXJDKAc1uxuJf24MzFj4CkifoECE?e=WoqdVa 
+
 | # | Title | Brief Description | Link |
 |---|---|---|---|
 | 1 | KenPom Adjusted Efficiency Ratings — Methodology | Explains how KenPom's AdjEM is computed and why it is the industry standard for NCAAB team quality | [kenpom.com/blog](https://kenpom.com/blog/national-efficiency/) |
