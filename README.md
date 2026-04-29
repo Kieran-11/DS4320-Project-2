@@ -26,7 +26,7 @@ The NCAA Tournament is one of the most-watched sporting events in the United Sta
 
 The refinement from the general problem of "predicting sports game outcomes" to this specific geographic hypothesis is driven by a gap in the existing literature. While home-court advantage is extensively documented, the question of whether regional proximity to a neutral-site venue conveys a measurable benefit — independent of team quality — has received little rigorous attention at the college level. The West Region provides a clean natural experiment: a fixed, recurring set of games at consistently western venues over a decade, with well-documented team ratings available for controls. If a significant longitude effect exists, it has practical implications for bracket strategy, NCAA seeding policy, and the academic literature on competitive balance in college athletics.
 
-**Press Release Headline:** [Home Is Where the West Is: Do NCAA Tournament Teams Perform Better on Their Own Turf?](press_release.md)
+**Press Release Headline:** [Home Is Where the West Is: Do NCAA Tournament Teams Perform Better on Their Own Turf?](Press_Release.md)
 
 ---
 
