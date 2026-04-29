@@ -1,27 +1,27 @@
-# DS 4320 Project 2: Predicting NCAA Basketball Game Outcomes at Neutral Sites
+# DS 4320 Project 2: Do Western Teams Have a Geographic Advantage in the NCAA West Region?
 
-**Executive Summary:** This repository contains a secondary dataset and analysis pipeline built to predict the outcome of NCAA Division I men's basketball games played at neutral sites. Game results from the 2015–2024 seasons were scraped from Sports-Reference, team-season efficiency ratings were pulled from Barttorvik (T-Rank), and travel distances from each team's home campus to the neutral venue were computed using geocoding and the haversine formula. The combined dataset was ingested into a MongoDB Atlas document database. An analysis pipeline (Jupyter notebook) then queries this database, engineers features, and applies machine learning classification to predict game winners — interrogating whether team quality metrics and travel burden explain outcomes at neutral venues where home-court advantage is absent.
+**Executive Summary:** This repository contains a fully established secondary dataset and analysis pipeline built to test whether NCAA Tournament teams located further west than their opponent perform better in West Region games. Game results from the 2015–2025 NCAA Tournament West Region were manually collected from Sports-Reference, team-season efficiency ratings were sourced from the Kaggle college basketball dataset (Barttorvik-derived T-Rank metrics), and travel distances from each team's home campus to the known West Region venue were computed using geocoding and the haversine formula. The combined dataset was ingested into a MongoDB Atlas document database (`ncaab_west_region`). An analysis pipeline (Jupyter notebook) queries this database, engineers features centered on longitude difference as the key hypothesis variable, and applies machine learning classification to test whether geographic westerness predicts game outcomes after controlling for team quality and seeding.
 
-**Name:** Kieran Perdue  
-**NetID:** rrx5eg  
-**DOI:** [YOUR ZENODO DOI — create at https://zenodo.org]  
-**Press Release:** [press_release.md](press_release.md)  
-**Pipeline:** [pipeline.ipynb](pipeline.ipynb)  
+**Name:** Kieran Perdue
+**NetID:** rrx5eg
+**DOI:** [YOUR ZENODO DOI — create at https://zenodo.org]
+**Press Release:** [press_release.md](press_release.md)
+**Pipeline:** [05_pipeline.ipynb](05_pipeline.ipynb)
 **License:** MIT — [LICENSE](LICENSE)
 
 ---
 
 ## Problem Definition
 
-**General Problem:** Predicting sports game outcomes.
+**General Problem:** Predicting sports game outcomes (General Problem #7).
 
-**Specific Problem:** Can the outcome of NCAA Division I men's basketball games played at neutral sites be predicted using pre-game team efficiency ratings and relative travel distance, and does travel asymmetry measurably influence win probability when neither team has a home-court advantage?
+**Specific Problem:** Do NCAA Tournament teams located significantly further west than their opponent win more often — and by larger margins — in West Region games, after controlling for team quality (Barttorvik efficiency ratings) and seeding?
 
-College basketball is one of the most analytically rich team sports in the United States, yet the bulk of predictive modeling focuses on games where one team has the structural advantage of playing at home. Neutral-site games — which occur frequently in early-season tournaments, conference tournaments, and the NCAA Tournament — remove this confound entirely, making them a cleaner environment in which to isolate the explanatory power of team quality and logistical factors. Travel fatigue is a well-documented phenomenon in professional sports but is understudied at the college level, where travel budgets and infrastructure vary dramatically across programs. A model that can reliably predict neutral-site outcomes has direct value for bracketology, sports betting markets, athletic program scheduling, and academic research on competitive balance.
+The NCAA Tournament is one of the most-watched sporting events in the United States, yet bracket prediction remains notoriously difficult. The bulk of analytical work focuses on team quality metrics such as adjusted efficiency and power ratings. Geographic factors — specifically whether playing closer to a team's home region conveys any advantage at a neutral site — are far less studied. The West Region of the NCAA Tournament is particularly interesting because its venues (Sacramento, San Diego, San Jose, Los Angeles, Las Vegas, San Francisco, Salt Lake City) are clustered in the western United States, which may systematically favor programs from that region through reduced travel, larger fan bases in attendance, and reduced time zone disruption.
 
-The refinement from the general problem of "predicting sports game outcomes" to this specific focus on neutral-site NCAAB games is driven by methodological clarity. A general game-prediction model is complicated by home-court advantage, which is a large, noisy, and difficult-to-quantify effect. By restricting the dataset to neutral-site games only, that confounder is eliminated, allowing the model to focus on two cleaner questions: how much do efficiency differentials predict outcomes, and does the team that travels farther lose more often? This narrowing produces a more interpretable and academically interesting dataset while remaining practically useful for the millions of fans and analysts who follow college basketball tournaments.
+The refinement from the general problem of "predicting sports game outcomes" to this specific geographic hypothesis is driven by a gap in the existing literature. While home-court advantage is extensively documented, the question of whether regional proximity to a neutral-site venue conveys a measurable benefit — independent of team quality — has received little rigorous attention at the college level. The West Region provides a clean natural experiment: a fixed, recurring set of games at consistently western venues over a decade, with well-documented team ratings available for controls. If a significant longitude effect exists, it has practical implications for bracket strategy, NCAA seeding policy, and the academic literature on competitive balance in college athletics.
 
-**Press Release Headline:** [When Nobody Has Home Court: Can Travel Distance and Team Efficiency Predict the NCAA Tournament?](press_release.md)
+**Press Release Headline:** [Home Is Where the West Is: Do NCAA Tournament Teams Perform Better on Their Own Turf?](press_release.md)
 
 ---
 
@@ -32,36 +32,36 @@ The refinement from the general problem of "predicting sports game outcomes" to 
 | Term | Definition |
 |------|-----------|
 | Neutral Site | A game venue that is not the home arena of either participating team |
+| West Region | One of four geographic regions in the NCAA Tournament bracket; venues are historically in the western United States |
 | AdjOE (Adjusted Offensive Efficiency) | Points scored per 100 possessions, adjusted for opponent strength |
 | AdjDE (Adjusted Defensive Efficiency) | Points allowed per 100 possessions, adjusted for opponent strength |
 | Barthag | Barttorvik power rating; estimated probability of beating an average D1 team on a neutral court |
-| Adj. Tempo | Adjusted possessions per 40 minutes; a measure of how fast a team plays |
+| Longitude Difference | Winner's home longitude minus loser's home longitude; negative = winner is further west |
+| Haversine Distance | Great-circle distance between two geographic coordinates, accounting for Earth's curvature |
+| Seed | Tournament seeding 1–16; lower seed = higher-ranked team |
 | WAB (Wins Above Bubble) | Wins above what a bubble NCAA Tournament team would be expected to accumulate given the same schedule |
-| eFG% (Effective Field Goal Percentage) | FG% adjusted to account for the extra value of three-point shots: (FGM + 0.5 × 3PM) / FGA |
-| TO Rate | Turnovers per 100 possessions |
-| OR% (Offensive Rebound Rate) | Percentage of available offensive rebounds secured |
-| FT Rate | Free throw attempts per field goal attempt |
-| Haversine Distance | Great-circle distance between two geographic coordinates, accounting for the curvature of the Earth |
+| eFG% (Effective Field Goal Percentage) | FG% adjusted for the extra value of three-point shots: (FGM + 0.5 × 3PM) / FGA |
+| T-Rank | Barttorvik's national team ranking system based on adjusted efficiency metrics |
 | KenPom | A competing advanced analytics system for college basketball; methodology closely parallels Barttorvik |
-| Bracketology | The practice of predicting the NCAA Tournament bracket and game outcomes |
-| Point Differential | Winner's score minus loser's score; a common proxy for margin of victory |
+| Point Differential | Winner's score minus loser's score; used as a continuous measure of game dominance |
+| Time Zone Adjustment | The physiological and logistical burden of competing across multiple time zones |
 | D1 | NCAA Division I, the highest level of collegiate athletics |
 
 ### Domain Background
 
-This project exists at the intersection of sports analytics and data engineering. College basketball analytics has matured significantly since Ken Pomeroy popularized possession-adjusted efficiency metrics in the early 2000s. The core insight driving the field is that raw scoring statistics are heavily influenced by pace of play, so normalizing by possessions allows for meaningful cross-team comparisons. Barttorvik's T-Rank system, the data source for team ratings in this project, builds on this tradition with its own ridge-regression-based adjustments for opponent strength and venue. Neutral-site game prediction is of particular interest because the NCAA Tournament — the most-watched college sporting event in the United States — is played almost entirely at neutral sites, and accurate prediction models have obvious commercial and academic value.
+This project sits at the intersection of sports analytics, geography, and data engineering. College basketball analytics has matured significantly since Ken Pomeroy popularized possession-adjusted efficiency metrics in the early 2000s. The core insight is that raw scoring statistics are heavily influenced by pace of play, so normalizing by possessions enables meaningful cross-team comparisons. Barttorvik's T-Rank system — the source of team ratings in this project — builds on this tradition with ridge-regression-based adjustments for opponent strength. The geographic dimension of this project draws on a smaller but growing literature on travel effects in professional sports, where studies have found that westward travel tends to be more fatiguing than eastward travel due to circadian rhythm disruption. Whether this effect is detectable in college basketball, where travel budgets and recovery infrastructure vary dramatically, is an open empirical question that this project addresses directly.
 
 ### Background Reading
 
-> **Note:** Upload copies of the articles below to a shared OneDrive folder and update the links. One point each, up to 5 points.
+> Upload copies of the articles below to a shared OneDrive folder and update the links. One point per article, up to 5 points.
 
 | Title | Description | Link |
 |-------|-------------|------|
-| Barttorvik T-Rank Methodology | Overview of how T-Rank efficiency ratings are computed and adjusted | [barttorvik.com](https://barttorvik.com) |
-| Sports-Reference CBB Documentation | Explanation of data fields and methodology for Sports-Reference college basketball statistics | [sports-reference.com/cbb](https://www.sports-reference.com/cbb/) |
-| *[Add article on travel fatigue in sports]* | Peer-reviewed or analytical piece on how travel distance affects team performance | [link to OneDrive copy] |
+| Barttorvik T-Rank Methodology | Overview of how T-Rank efficiency ratings are computed and adjusted for opponent strength | [barttorvik.com](https://barttorvik.com) |
+| Kaggle College Basketball Dataset | Documentation for the cbb.csv dataset used as the source of team efficiency ratings | [kaggle.com/datasets/andrewsundberg/college-basketball-dataset](https://www.kaggle.com/datasets/andrewsundberg/college-basketball-dataset) |
+| *[Add article on travel fatigue in sports]* | Peer-reviewed piece on how travel distance and time zones affect athletic performance | [link to OneDrive copy] |
 | *[Add article on NCAA Tournament prediction]* | Overview of machine learning approaches to bracket prediction | [link to OneDrive copy] |
-| *[Add article on home court advantage in basketball]* | Quantification of home-court advantage and what happens when it is removed | [link to OneDrive copy] |
+| *[Add article on home court / regional advantage]* | Quantification of regional familiarity effects at neutral-site sporting events | [link to OneDrive copy] |
 
 ---
 
@@ -69,34 +69,34 @@ This project exists at the intersection of sports analytics and data engineering
 
 ### Provenance
 
-Raw data for this project was collected from two publicly accessible sources. Game results were scraped from Sports-Reference (sports-reference.com/cbb), which compiles official NCAA statistics and historical schedules. The scraper (`01_scrape_games.py`) iterates over seasons 2015–2024, fetches the full season schedule page for each year, parses the HTML table using BeautifulSoup, and retains only rows where the location flag equals `"N"` (neutral site), yielding one row per neutral-site game with winner, loser, scores, and date. A 4-second courtesy delay between requests is enforced to comply with Sports-Reference's rate-limiting policies.
+Raw game data was manually exported from Sports-Reference's CBB Play Index (sports-reference.com/cbb) via the browser interface — automated scraping was not feasible due to the site's bot-detection systems returning 403/404 responses for all programmatic requests. The exported CSV (`data/West_results.csv`) contains all NCAA Tournament West Region game results from 2015–2025, with each game appearing twice (once per team). Script `01_scrape_games.py` processes this file: it deduplicates by retaining only the winning team's row, standardizes team names to match Barttorvik conventions, and attaches known West Region venue coordinates from a hard-coded lookup table sourced from NCAA public tournament records.
 
-Team efficiency ratings were obtained from Barttorvik (barttorvik.com), which provides a free JSON API endpoint returning all D1 team ratings for a given season (`02_pull_barttorvik.py`). This endpoint requires no API key and returns 21 statistical columns per team per season including adjusted offensive and defensive efficiency, pace, rebound rates, turnover rates, and a composite power rating (Barthag). Travel distances were computed in `03_compute_distances.py` by geocoding each school's home location via OpenStreetMap's Nominatim API (via the `geopy` library) and then applying the haversine formula to calculate great-circle distance in miles from each team's home campus to the estimated venue location. Because the scraped game records do not contain venue city data, the venue coordinates are approximated as the geographic midpoint between the two teams' home locations — a known simplification discussed further below. The final merge and MongoDB ingestion is performed by `04_merge_and_ingest.py`, which joins game records with Barttorvik ratings on `(team, season)` and constructs nested JSON documents containing game metadata, per-team ratings, and derived differential features.
+Team efficiency ratings were sourced from the Kaggle college basketball dataset (`data/cbb.csv`), which compiles Barttorvik T-Rank metrics for all D1 teams from 2013–2023. Script `02_pull_barttorvik.py` loads this file and standardizes column names to match pipeline conventions. Travel distances were computed in `03_compute_distances.py` by geocoding each school's home campus location — using a manually curated lookup table of 80+ programs for accuracy, with Nominatim as a fallback for unlisted schools — and then applying the haversine formula to calculate great-circle distance in miles from each team's home to the actual known West Region venue city for that year. The final merge and MongoDB ingestion is performed by `04_merge_and_ingest.py`, which joins game records with efficiency ratings on `(team, season)` and constructs nested JSON documents containing game metadata, per-team ratings, venue coordinates, and derived hypothesis variables.
 
 ### Code
 
 | File | Description | Link |
 |------|-------------|------|
-| `01_scrape_games.py` | Scrapes neutral-site NCAAB game results from Sports-Reference for seasons 2015–2024. Outputs `data/raw_games.csv`. | [01_scrape_games.py](01_scrape_games.py) |
-| `02_pull_barttorvik.py` | Fetches T-Rank team efficiency ratings for all D1 teams from Barttorvik's JSON API. Outputs `data/barttorvik_ratings.csv`. | [02_pull_barttorvik.py](02_pull_barttorvik.py) |
-| `03_compute_distances.py` | Geocodes school home locations via Nominatim and computes haversine travel distances to each neutral-site venue. Outputs `data/games_with_distance.csv` and a geocoding cache. | [03_compute_distances.py](03_compute_distances.py) |
-| `04_merge_and_ingest.py` | Merges game and rating data, builds nested MongoDB documents, and upserts them into MongoDB Atlas. Also ingests the standalone team ratings collection. | [04_merge_and_ingest.py](04_merge_and_ingest.py) |
+| `01_scrape_games.py` | Processes the manually downloaded West Region CSV, deduplicates, standardizes team names, and attaches known venue coordinates. Outputs `data/raw_games.csv`. | [01_scrape_games.py](01_scrape_games.py) |
+| `02_pull_barttorvik.py` | Loads Barttorvik T-Rank metrics from the Kaggle cbb.csv dataset and standardizes column names. Outputs `data/barttorvik_ratings.csv`. | [02_pull_barttorvik.py](02_pull_barttorvik.py) |
+| `03_compute_distances.py` | Geocodes school home locations and computes haversine distances to the actual West Region venue for each season. Outputs `data/games_with_distance.csv`. | [03_compute_distances.py](03_compute_distances.py) |
+| `04_merge_and_ingest.py` | Merges game and rating data, builds nested MongoDB documents with hypothesis variables, and upserts into MongoDB Atlas (`ncaab_west_region`). | [04_merge_and_ingest.py](04_merge_and_ingest.py) |
 
 ### Critical Decisions and Uncertainty
 
-The most significant judgment call in this pipeline is the use of the geographic midpoint between the two teams' home campuses as a proxy for the neutral-site venue location. This approximation is necessary because the Sports-Reference schedule pages do not consistently include a parseable venue city field. The consequence is that individual distance estimates may be inaccurate, but the *relative* travel burden (who traveled farther, and by roughly how much) is directionally preserved for most games. The error is largest for games played very close to one team's home city — for example, a "neutral site" game in a team's home state — where the midpoint heuristic could assign near-zero distance to a team that actually traveled a moderate distance. A mitigation strategy would be to scrape venue city data from a secondary source (e.g., ESPN or NCAA.com) and geocode it directly; this is documented as a known limitation.
+The most significant improvement over a naive approach is the use of **actual known West Region venue cities** rather than a midpoint heuristic. Unlike generic neutral-site game databases, the NCAA Tournament's venue locations are public record, so every distance in this dataset is computed against the real arena city — Sacramento, San Diego, Las Vegas, Los Angeles, San Francisco, Salt Lake City, or San Jose depending on the year. This substantially reduces distance measurement error compared to midpoint approximation.
 
-A secondary judgment call is the season date range (2015–2024). Seasons prior to 2015 have less complete Barttorvik data and the sport has changed significantly in style of play (the pace-and-space evolution), which would introduce non-stationarity. Limiting to 10 seasons balances data volume against consistency.
+The most important judgment call is treating 2021 (the COVID bubble year) as a normal season. All 2021 games were played in Indianapolis regardless of regional assignment, which removes geographic variation for that year entirely. These games are retained in the dataset but noted as a known confounder — the 2021 season systematically suppresses the longitude signal. A sensitivity analysis excluding 2021 is recommended.
 
-Name matching between Sports-Reference team names and Barttorvik team names introduces join failures for some programs. The `SCHOOL_GEOCODE_OVERRIDES` dictionary in `03_compute_distances.py` and the merge logic in `04_merge_and_ingest.py` address the most common mismatches, but some records will have missing rating data where team names could not be reconciled. These rows are retained in the database with null rating fields rather than dropped, preserving game outcome data for analyses that do not require efficiency ratings.
+The Kaggle rating dataset ends at 2023, so 2024 and 2025 games have no Barttorvik ratings attached. These games contribute to the raw geographic analysis (longitude difference, point margin) but are excluded from the ML modeling sample, reducing the modeling sample from 133 to 76 games.
 
 ### Bias Identification
 
-Several sources of bias may affect this dataset. **Selection bias** is inherent: neutral-site games disproportionately feature higher-ranked programs (Power 5 conferences, tournament participants), because smaller programs rarely travel to neutral-site tournaments. The dataset therefore over-represents elite programs and may produce models that generalize poorly to mid-major matchups. **Survivorship bias** exists in the Barttorvik ratings themselves, as teams that perform well generate more games and more data. **Geocoding bias** affects programs in dense urban areas differently from rural campuses — Nominatim is more reliable for flagship state universities than for smaller private institutions, introducing systematically missing distance data for some program types. **Temporal bias** may exist if conference realignments (e.g., programs moving between conferences 2015–2024) cause ratings to behave differently across the timeframe.
+**Selection bias:** West Region games disproportionately feature Power 6 conference programs. The region historically includes many Pac-12/12-now-independent schools (Gonzaga, Arizona, UCLA) which are both geographically western and high-quality — creating confounding between quality and longitude that the model must disentangle. **Temporal bias:** Conference realignment (Pac-12 dissolution, 2023–2024) may affect which programs appear in the West Region in later seasons, altering the geographic distribution of teams. **Coverage bias:** The Kaggle ratings file ends at 2023, so the two most recent seasons are missing from the modeling sample. **Geocoding bias:** Distance estimates for schools in dense urban areas are more precise than for rural campuses, though the manual lookup table mitigates this for the most common programs.
 
 ### Bias Mitigation
 
-Tournament-context indicators and conference membership fields could be added to allow stratified analysis that separates high-major from mid-major matchups, partially addressing selection bias. The geocoding cache allows manual review and correction of failed lookups. For temporal bias, season fixed effects can be included in the model or separate models can be fit per season. Missing rating data is flagged with null values rather than imputed, ensuring downstream analyses can choose their own handling strategy transparently.
+The model includes `barthag_diff` and `seed_diff` as explicit controls for team quality, allowing `lon_diff` to be evaluated after accounting for the quality confound. Season fixed effects can be added to address temporal bias. The 2021 bubble year is flagged in the dataset and can be excluded in sensitivity analyses. Missing ratings (2024–2025) are stored as null values rather than dropped from the database, preserving game outcome data for geographic-only analyses.
 
 ---
 
@@ -104,110 +104,103 @@ Tournament-context indicators and conference membership fields could be added to
 
 ### Implicit Schema — `games` Collection
 
-Each document in the `ncaab_neutral_site.games` collection represents a single neutral-site game and follows the structure below. All fields are optional in MongoDB's schema-free model, but the pipeline constructs every document with this shape.
+Each document in `ncaab_west_region.games` represents one West Region NCAA Tournament game. The `hypothesis` subdocument contains all key variables for testing the geographic hypothesis.
 
 ```
 {
-  season:       <int>        // Ending year of the NCAA season (e.g. 2024 = 2023-24)
-  date:         <string>     // Game date as ISO string (YYYY-MM-DD)
-  neutral_site: <bool>       // Always true; included for filtering clarity
+  season:        <int>     // Ending year of the NCAA season (e.g. 2024 = 2023-24)
+  date:          <string>  // Approximate game date (YYYY-MM-DD); exact date not in source export
+  region:        <string>  // Always "West"
+  neutral_site:  <bool>    // Always true
+  venue: {
+    city:        <string>  // Known West Region host city (e.g. "Las Vegas")
+    lat:         <float>   // Venue latitude
+    lon:         <float>   // Venue longitude
+  },
   winner: {
-    team:       <string>     // Team name as it appears on Sports-Reference
-    pts:        <float>      // Points scored
-    home_lat:   <float>      // Home campus latitude (degrees)
-    home_lon:   <float>      // Home campus longitude (degrees)
-    dist_miles: <float>      // Haversine distance from home to estimated venue (miles)
+    team:        <string>  // Team name (standardized to Barttorvik conventions)
+    pts:         <float>   // Points scored
+    seed:        <int>     // Tournament seed (1-16)
+    lat:         <float>   // Home campus latitude
+    lon:         <float>   // Home campus longitude
+    dist_miles:  <float>   // Haversine distance from home to venue
     ratings: {
-      rank:     <int>        // T-Rank national rank
-      adjoe:    <float>      // Adjusted offensive efficiency
-      adjde:    <float>      // Adjusted defensive efficiency
-      barthag:  <float>      // Power rating (0–1)
-      adj_tempo:<float>      // Adjusted possessions per 40 min
-      wab:      <float>      // Wins above bubble
-      efg_pct:  <float>      // Effective FG%
-      efg_d_pct:<float>      // Effective FG% allowed
-      tor:      <float>      // Turnover rate
-      tord:     <float>      // Turnover rate forced
-      orb:      <float>      // Offensive rebound rate
-      drb:      <float>      // Defensive rebound rate
+      rank:      <int>     // T-Rank national rank
+      adjoe:     <float>   // Adjusted offensive efficiency
+      adjde:     <float>   // Adjusted defensive efficiency
+      barthag:   <float>   // Power rating (0-1)
+      adj_tempo: <float>   // Adjusted possessions per 40 min
+      wab:       <float>   // Wins above bubble
+      efg_pct:   <float>   // Effective FG%
+      efg_d_pct: <float>   // Effective FG% allowed
+      tor:       <float>   // Turnover rate
+      tord:      <float>   // Turnover rate forced
+      orb:       <float>   // Offensive rebound rate
+      drb:       <float>   // Defensive rebound rate
     }
   },
-  loser: { ... }             // Identical structure to winner
-  venue: {
-    lat:        <float>      // Estimated venue latitude (midpoint heuristic)
-    lon:        <float>      // Estimated venue longitude (midpoint heuristic)
+  loser: { ... },          // Identical structure to winner
+  hypothesis: {
+    lon_diff:        <float>  // winner_lon - loser_lon (negative = winner further west)
+    dist_diff_miles: <float>  // winner_dist - loser_dist
+    seed_diff:       <int>    // winner_seed - loser_seed
+    barthag_diff:    <float>  // winner_barthag - loser_barthag
+    adjoe_diff:      <float>  // winner_adjoe - loser_adjoe
+    adjde_diff:      <float>  // winner_adjde - loser_adjde
   },
-  derived: {
-    point_diff:       <float>  // winner_pts - loser_pts
-    dist_diff_miles:  <float>  // winner_dist - loser_dist (positive = winner traveled farther)
-    adjoe_diff:       <float>  // winner_adjoe - loser_adjoe
-    adjde_diff:       <float>  // winner_adjde - loser_adjde
-    barthag_diff:     <float>  // winner_barthag - loser_barthag
-    tempo_diff:       <float>  // winner_tempo - loser_tempo
-  },
-  ingested_at: <ISODate>       // UTC timestamp of document ingestion
+  ingested_at: <ISODate>      // UTC timestamp of document ingestion
 }
 ```
 
 ### Implicit Schema — `team_ratings` Collection
 
-Each document in `ncaab_neutral_site.team_ratings` represents one team's season-level T-Rank statistics. One document per `(team, season)` pair.
+Each document represents one team's season-level T-Rank statistics. One document per `(team, season)` pair.
 
 ```
 {
-  team:           <string>  // Team name
-  season:         <int>     // Season ending year
-  rank:           <int>     // T-Rank national rank
-  conf:           <string>  // Conference abbreviation
-  record:         <string>  // Win-loss record (e.g. "28-7")
-  adjoe:          <float>
-  adjde:          <float>
-  barthag:        <float>
-  efg_pct:        <float>
-  efg_d_pct:      <float>
-  tor:            <float>
-  tord:           <float>
-  orb:            <float>
-  drb:            <float>
-  ftr:            <float>
-  ftrd:           <float>
-  two_pt_pct:     <float>
-  two_pt_d_pct:   <float>
-  three_pt_pct:   <float>
-  three_pt_d_pct: <float>
-  adj_tempo:      <float>
-  wab:            <float>
-  ingested_at:    <ISODate>
+  team:        <string>  // Team name
+  season:      <int>     // Season ending year
+  conf:        <string>  // Conference abbreviation
+  rank:        <int>     // T-Rank national rank
+  adjoe:       <float>
+  adjde:       <float>
+  barthag:     <float>
+  efg_pct:     <float>
+  efg_d_pct:   <float>
+  tor:         <float>
+  tord:        <float>
+  orb:         <float>
+  drb:         <float>
+  adj_tempo:   <float>
+  wab:         <float>
+  ingested_at: <ISODate>
 }
 ```
 
 ### Data Summary
 
-| Collection | Approximate Documents | Seasons Covered | Key Join Key |
+| Collection | Documents | Seasons Covered | Key Join Field |
 |---|---|---|---|
-| `games` | ~4,000–6,000 | 2015–2024 | `(season, winner.team, loser.team, date)` |
-| `team_ratings` | ~3,500 (350 teams × 10 seasons) | 2015–2024 | `(team, season)` |
+| `games` | 133 | 2015–2025 | `(season, winner.team, loser.team)` |
+| `team_ratings` | 4,249 | 2013–2023 | `(team, season)` |
 
-> Update the document counts above after running `04_merge_and_ingest.py`.
-
-### Data Dictionary — `games` Collection (Selected Features)
+### Data Dictionary — `games` Collection
 
 | Field | Type | Description | Example | Uncertainty |
 |---|---|---|---|---|
-| `season` | int | Ending calendar year of the NCAA season | `2024` | None — deterministic from scrape year |
-| `date` | string | Date of the game | `"2023-11-10"` | Low — parsed directly from Sports-Reference; rare missing values for older games |
-| `winner.team` | string | Name of the winning team | `"Duke"` | Low — direct from source; occasional name variant mismatches with Barttorvik |
-| `winner.pts` | float | Points scored by the winner | `78.0` | Very low — official game scores |
-| `winner.dist_miles` | float | Estimated travel distance for the winner (miles) | `412.3` | **High** — midpoint venue heuristic introduces error of 50–300 miles for some games |
-| `winner.ratings.adjoe` | float | Winner's adjusted offensive efficiency at time of season | `118.4` | Medium — season-level aggregate; does not reflect team form at game date |
-| `winner.ratings.adjde` | float | Winner's adjusted defensive efficiency | `94.1` | Medium — same caveat as adjoe |
-| `winner.ratings.barthag` | float | Winner's power rating (prob. of beating avg D1 team) | `0.937` | Medium — model-derived; uncertainty compounds from all component metrics |
-| `winner.ratings.adj_tempo` | float | Adjusted possessions per 40 minutes | `71.2` | Low-medium — stable across a season; small sample variance early in year |
-| `winner.ratings.wab` | float | Wins above bubble | `8.4` | Medium — schedule-dependent; high variance for teams with few games |
-| `loser.dist_miles` | float | Estimated travel distance for the loser (miles) | `638.7` | **High** — same midpoint heuristic caveat as winner |
-| `derived.dist_diff_miles` | float | winner_dist_miles − loser_dist_miles (positive = winner traveled farther) | `-226.4` | **High** — inherits error from both distance estimates |
-| `derived.barthag_diff` | float | winner_barthag − loser_barthag | `0.312` | Medium — propagated from both teams' barthag uncertainty |
-| `derived.adjoe_diff` | float | Offensive efficiency gap between winner and loser | `12.1` | Medium — season aggregate; see adjoe note |
-| `derived.point_diff` | float | Final score margin (winner_pts − loser_pts) | `11.0` | Very low — official game scores |
-| `venue.lat` / `venue.lon` | float | Estimated venue coordinates (midpoint heuristic) | `38.5, -90.2` | **High** — see midpoint heuristic discussion in Data Creation |
-| `ingested_at` | ISODate | UTC timestamp of when document was written to MongoDB | `2025-03-15T14:22:00Z` | None — system-generated |
+| `season` | int | Ending calendar year of the NCAA season | `2024` | None — deterministic |
+| `date` | string | Approximate game date | `"2024-03-01"` | Medium — exact date not in source export; month is correct |
+| `winner.team` | string | Winning team name | `"Gonzaga"` | Low — direct from source; occasional name variant mismatches |
+| `winner.pts` | float | Points scored by winner | `93.0` | Very low — official game scores |
+| `winner.seed` | int | Tournament seed of winner | `1` | Very low — official NCAA bracket |
+| `winner.lon` | float | Winner's home campus longitude | `-117.40` | Low — manually curated lookup table for major programs |
+| `winner.dist_miles` | float | Distance from winner's home to venue | `412.3` | Low-medium — uses actual venue city; geocoding error ±10 miles |
+| `winner.ratings.barthag` | float | Winner's power rating | `0.937` | Medium — season-level aggregate; does not reflect game-day form |
+| `winner.ratings.adjoe` | float | Adjusted offensive efficiency | `118.4` | Medium — same caveat as barthag |
+| `hypothesis.lon_diff` | float | winner_lon − loser_lon | `-14.2` | Low-medium — inherits geocoding precision from both teams |
+| `hypothesis.dist_diff_miles` | float | winner_dist − loser_dist | `-226.4` | Low-medium — uses actual venue coordinates |
+| `hypothesis.seed_diff` | int | winner_seed − loser_seed | `-3` | Very low — official NCAA bracket |
+| `hypothesis.barthag_diff` | float | Quality gap between teams | `0.312` | Medium — propagated from both teams' rating uncertainty |
+| `derived.point_diff` | float | Final score margin | `11.0` | Very low — official game scores |
+| `venue.city` | string | Known West Region host city | `"Las Vegas"` | Very low — manually sourced from NCAA records |
+| `ingested_at` | ISODate | UTC ingestion timestamp | `2026-04-29T...` | None — system-generated |
