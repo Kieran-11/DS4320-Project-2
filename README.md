@@ -10,7 +10,7 @@
 
 **Press Release:** [press_release.md](Press_Release.md)
 
-**Pipeline:** [05_pipeline.ipynb](05_pipeline.ipynb)
+**Pipeline:** [05_pipeline.ipynb](pipeline/05_pipeline.ipynb)
 
 **License:** MIT — [LICENSE](LICENSE)
 
