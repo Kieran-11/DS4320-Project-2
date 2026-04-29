@@ -1,16 +1,20 @@
 """
 03_compute_distances.py
 -----------------------
-Geocodes each NCAAB school's home arena using geopy (OpenStreetMap/Nominatim)
-and computes haversine distance (miles) from each team's home to the
-neutral-site game venue.
+Geocodes each team's home campus and computes:
+  - Distance (miles) from each team's home to the West Region venue
+  - Longitude difference (team_lon - opponent_lon): positive = team is further west
+  - A "westness" score: how much further west the winner was vs the loser
+
+For the West Region hypothesis, longitude difference is the key variable:
+a team with a more negative longitude (further west) playing in a western
+venue should have a geographic/cultural familiarity advantage.
 
 Inputs:
-  data/raw_games.csv          (from 01_scrape_games.py)
-
+    data/raw_games.csv            (from 01_scrape_games.py)
 Outputs:
-  data/school_locations.csv   (team → lat/lon cache)
-  data/games_with_distance.csv
+    data/school_locations.json    (geocode cache)
+    data/games_with_distance.csv
 
 Dependencies: pip install geopy pandas numpy
 """
@@ -20,215 +24,275 @@ import numpy as np
 import time
 import os
 import json
+import logging
+from pathlib import Path
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 GAMES_PATH      = "data/raw_games.csv"
-LOCATIONS_CACHE = "data/school_locations.json"   # cache to avoid re-geocoding
+LOCATIONS_CACHE = "data/school_locations.json"
 OUTPUT_GAMES    = "data/games_with_distance.csv"
-SLEEP_SECONDS   = 1.1   # Nominatim requires ≥1s between requests
-# ───────────────────────────────────────────────────────────────────────────────
+SLEEP_SECONDS   = 1.1    # Nominatim requires >=1s between requests
 
-# Known venue locations for major neutral-site tournaments.
-# Add more as you encounter them — this saves geocoding failures on venue names.
-KNOWN_VENUES = {
-    "NCAA Tournament": None,   # will be geocoded from game city if available
-    "Madison Square Garden": (40.7505, -73.9934),
-    "United Center": (41.8807, -87.6742),
-    "Barclays Center": (40.6826, -73.9754),
-    "T-Mobile Arena": (36.1028, -115.1784),
-    "Spectrum Center": (35.2251, -80.8392),
-    "Gainbridge Fieldhouse": (39.7639, -86.1555),
-    "Fiserv Forum": (43.0450, -87.9170),
-    "Toyota Center": (29.7508, -95.3621),
-    "Ball Arena": (39.7487, -105.0077),
-    "Capital One Arena": (38.8981, -77.0209),
-    "PPG Paints Arena": (40.4396, -79.9892),
-    "Paycom Center": (35.4634, -97.5151),
-    "Crypto.com Arena": (34.0430, -118.2673),
-    "Kaseya Center": (25.7814, -80.1870),
+# ── Logging ────────────────────────────────────────────────────────────────────
+Path("logs").mkdir(exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.FileHandler("logs/03_compute_distances.log", mode="w"),
+        logging.StreamHandler(),
+    ],
+)
+log = logging.getLogger("compute_distances")
+
+# ── Manual school location overrides ──────────────────────────────────────────
+# Geocoding by school name is unreliable; these are exact lat/lon for campus.
+SCHOOL_LOCATIONS = {
+    "Gonzaga":            (47.6673, -117.4022),
+    "Arizona":            (32.2319, -110.9501),
+    "Arizona State":      (33.4242, -111.9281),
+    "UCLA":               (34.0689, -118.4452),
+    "USC":                (34.0224, -118.2851),
+    "Oregon":             (44.0461, -123.0722),
+    "Oregon State":       (44.5646, -123.2620),
+    "Washington":         (47.6553, -122.3035),
+    "Washington State":   (46.7298, -117.1817),
+    "Utah":               (40.7649, -111.8421),
+    "Utah State":         (41.7458, -111.8135),
+    "Colorado":           (40.0076, -105.2659),
+    "Colorado State":     (40.5734, -105.0865),
+    "Nevada":             (39.5470, -119.8150),
+    "UNLV":               (36.1076, -115.1425),
+    "San Diego State":    (32.7757, -117.0719),
+    "BYU":                (40.2338, -111.6585),
+    "New Mexico":         (35.0844, -106.6504),
+    "Boise State":        (43.6019, -116.1995),
+    "Fresno State":       (36.8133, -119.7468),
+    "Kansas":             (38.9543, -95.2558),
+    "Kansas State":       (39.1836, -96.5717),
+    "Kentucky":           (38.0306, -84.5037),
+    "Duke":               (36.0014, -78.9382),
+    "North Carolina":     (35.9049, -79.0469),
+    "UNC":                (35.9049, -79.0469),
+    "Michigan":           (42.2780, -83.7382),
+    "Michigan State":     (42.7251, -84.4791),
+    "Villanova":          (40.0358, -75.3435),
+    "Texas":              (30.2849, -97.7341),
+    "Texas Tech":         (33.5843, -101.8783),
+    "Baylor":             (31.5489, -97.1131),
+    "Houston":            (29.7199, -95.3422),
+    "Florida":            (29.6465, -82.3533),
+    "Florida State":      (30.4418, -84.2985),
+    "Alabama":            (33.2098, -87.5692),
+    "Auburn":             (32.6099, -85.4808),
+    "Tennessee":          (35.9546, -83.9296),
+    "Purdue":             (40.4259, -86.9081),
+    "Indiana":            (39.1682, -86.5230),
+    "Ohio State":         (40.0061, -83.0282),
+    "Iowa":               (41.6611, -91.5302),
+    "Iowa State":         (42.0266, -93.6465),
+    "Illinois":           (40.1020, -88.2272),
+    "Wisconsin":          (43.0753, -89.4081),
+    "Minnesota":          (44.9740, -93.2277),
+    "Xavier":             (39.1479, -84.4726),
+    "Creighton":          (41.2565, -96.0090),
+    "Marquette":          (43.0389, -87.9365),
+    "Providence":         (41.8376, -71.4422),
+    "UConn":              (41.8079, -72.2550),
+    "Connecticut":        (41.8079, -72.2550),
+    "Seton Hall":         (40.7452, -74.2435),
+    "St. John's":         (40.7219, -73.7949),
+    "Georgetown":         (38.9076, -77.0723),
+    "Syracuse":           (43.0351, -76.1354),
+    "Pittsburgh":         (40.4443, -79.9602),
+    "Virginia":           (38.0336, -78.5080),
+    "Virginia Tech":      (37.2284, -80.4234),
+    "North Carolina State": (35.7872, -78.6872),
+    "Wake Forest":        (36.1340, -80.2784),
+    "Notre Dame":         (41.7052, -86.2353),
+    "Louisville":         (38.2253, -85.7585),
+    "Oklahoma":           (35.2059, -97.4455),
+    "Oklahoma State":     (36.1269, -97.0682),
+    "TCU":                (32.7096, -97.3639),
+    "SMU":                (32.8412, -96.7840),
+    "Arkansas":           (36.0681, -94.1737),
+    "LSU":                (30.4133, -91.1800),
+    "Mississippi State":  (33.4554, -88.7923),
+    "Ole Miss":           (34.3654, -89.5379),
+    "Georgia":            (33.9480, -83.3771),
+    "South Carolina":     (33.9963, -81.0210),
+    "Missouri":           (38.9404, -92.3277),
+    "Nebraska":           (40.8202, -96.7005),
+    "North Dakota":       (46.9199, -96.7981),
+    "North Dakota State": (46.8972, -96.8022),
+    "South Dakota State": (44.3190, -96.7898),
+    "Montana State":      (45.6669, -111.0541),
+    "Eastern Washington": (47.6010, -117.5644),
+    "Norfolk State":      (36.8468, -76.2863),
+    "Howard":             (38.9218, -77.0200),
+    "Texas Southern":     (29.7270, -95.3599),
+    "Alcorn State":       (31.9282, -90.9726),
+    "College of Charleston": (32.7835, -79.9374),
+    "Charleston":         (32.7835, -79.9374),
+    "Clemson":            (34.6834, -82.8374),
+    "Wichita State":      (37.7197, -97.2948),
+    "Saint Mary's (CA)":  (37.8494, -122.1189),
+    "Pacific":            (37.9838, -121.3153),
+    "Long Beach State":   (33.7838, -118.1141),
+    "UC Santa Barbara":   (34.4140, -119.8489),
+    "UC Irvine":          (33.6405, -117.8443),
+    "UC Davis":           (38.5382, -121.7617),
+    "Cal":                (37.8724, -122.2595),
+    "Stanford":           (37.4275, -122.1697),
+    "VCU":                (37.5477, -77.4526),
+    "Memphis":            (35.1495, -90.0490),
+    "Cincinnati":         (39.1329, -84.5150),
 }
 
-# Manual overrides for school names that geopy struggles with.
-# Key = name as it appears in Sports-Reference, Value = search string for geopy.
-SCHOOL_GEOCODE_OVERRIDES = {
-    "UConn":               "University of Connecticut, Storrs, CT",
-    "UNC":                 "University of North Carolina, Chapel Hill, NC",
-    "NC State":            "NC State University, Raleigh, NC",
-    "LSU":                 "Louisiana State University, Baton Rouge, LA",
-    "USC":                 "University of Southern California, Los Angeles, CA",
-    "UCF":                 "University of Central Florida, Orlando, FL",
-    "UNLV":                "University of Nevada Las Vegas, Las Vegas, NV",
-    "VCU":                 "Virginia Commonwealth University, Richmond, VA",
-    "SMU":                 "Southern Methodist University, Dallas, TX",
-    "TCU":                 "Texas Christian University, Fort Worth, TX",
-    "BYU":                 "Brigham Young University, Provo, UT",
-    "UAB":                 "University of Alabama Birmingham, Birmingham, AL",
-    "UTEP":                "University of Texas El Paso, El Paso, TX",
-    "UTSA":                "University of Texas San Antonio, San Antonio, TX",
-    "FIU":                 "Florida International University, Miami, FL",
-    "FAU":                 "Florida Atlantic University, Boca Raton, FL",
-    "Ole Miss":            "University of Mississippi, Oxford, MS",
-    "Mississippi State":   "Mississippi State University, Starkville, MS",
-    "Miami (FL)":          "University of Miami, Coral Gables, FL",
-    "Miami (OH)":          "Miami University, Oxford, OH",
-    "Saint Mary's (CA)":   "Saint Mary's College, Moraga, CA",
-    "Loyola Chicago":      "Loyola University Chicago, Chicago, IL",
-    "Loyola (MD)":         "Loyola University Maryland, Baltimore, MD",
-    "Illinois State":      "Illinois State University, Normal, IL",
-    "Indiana State":       "Indiana State University, Terre Haute, IN",
-    "Iowa State":          "Iowa State University, Ames, IA",
-    "Kansas State":        "Kansas State University, Manhattan, KS",
-    "Michigan State":      "Michigan State University, East Lansing, MI",
-    "Ohio State":          "Ohio State University, Columbus, OH",
-    "Penn State":          "Penn State University, University Park, PA",
-    "Arizona State":       "Arizona State University, Tempe, AZ",
-    "Florida State":       "Florida State University, Tallahassee, FL",
-    "Colorado State":      "Colorado State University, Fort Collins, CO",
-    "Oregon State":        "Oregon State University, Corvallis, OR",
-    "Washington State":    "Washington State University, Pullman, WA",
-}
 
-
-def haversine_miles(lat1, lon1, lat2, lon2):
+def haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Compute great-circle distance in miles between two lat/lon points."""
-    R = 3958.8  # Earth radius in miles
+    R = 3958.8
     phi1, phi2 = np.radians(lat1), np.radians(lat2)
-    dphi  = np.radians(lat2 - lat1)
-    dlam  = np.radians(lon2 - lon1)
+    dphi = np.radians(lat2 - lat1)
+    dlam = np.radians(lon2 - lon1)
     a = np.sin(dphi/2)**2 + np.cos(phi1) * np.cos(phi2) * np.sin(dlam/2)**2
     return R * 2 * np.arcsin(np.sqrt(a))
 
 
-def load_location_cache(cache_path):
-    if os.path.exists(cache_path):
-        with open(cache_path, "r") as f:
+def load_cache(path: str) -> dict:
+    """Load geocode cache from JSON file."""
+    if os.path.exists(path):
+        with open(path, "r") as f:
             return json.load(f)
     return {}
 
 
-def save_location_cache(cache, cache_path):
-    with open(cache_path, "w") as f:
+def save_cache(cache: dict, path: str) -> None:
+    """Save geocode cache to JSON file."""
+    with open(path, "w") as f:
         json.dump(cache, f, indent=2)
 
 
-def geocode_entity(name: str, geolocator, cache: dict):
+def get_location(name: str, geolocator, cache: dict) -> tuple:
     """
-    Looks up lat/lon for a school or venue name.
-    Uses cache first, then Nominatim, with manual overrides.
-    Returns (lat, lon) tuple or (None, None) on failure.
+    Return (lat, lon) for a school name.
+
+    Checks manual overrides first, then cache, then geocodes via Nominatim.
+    Saves result to cache after each lookup to avoid re-geocoding on restart.
+
+    Parameters
+    ----------
+    name       : School name string.
+    geolocator : Nominatim geolocator instance.
+    cache      : Mutable dict used as persistent geocode cache.
+
+    Returns
+    -------
+    tuple : (lat, lon) or (None, None) on failure.
     """
+    # 1. Manual override — most reliable
+    if name in SCHOOL_LOCATIONS:
+        return SCHOOL_LOCATIONS[name]
+
+    # 2. Cache hit
     if name in cache:
         return tuple(cache[name]) if cache[name] else (None, None)
 
-    # Check known venues
-    if name in KNOWN_VENUES and KNOWN_VENUES[name] is not None:
-        cache[name] = list(KNOWN_VENUES[name])
-        return KNOWN_VENUES[name]
-
-    # Apply school name overrides
-    query = SCHOOL_GEOCODE_OVERRIDES.get(name, f"{name} university arena")
-
+    # 3. Geocode via Nominatim
+    query = f"{name} university"
     try:
         time.sleep(SLEEP_SECONDS)
-        location = geolocator.geocode(query, timeout=10)
-        if location:
-            cache[name] = [location.latitude, location.longitude]
-            print(f"    Geocoded: {name!r} → ({location.latitude:.4f}, {location.longitude:.4f})")
-            return location.latitude, location.longitude
+        loc = geolocator.geocode(query, timeout=10)
+        if loc:
+            cache[name] = [loc.latitude, loc.longitude]
+            log.info(f"  Geocoded: {name!r} → ({loc.latitude:.4f}, {loc.longitude:.4f})")
+            return loc.latitude, loc.longitude
         else:
-            # Try simpler query
-            time.sleep(SLEEP_SECONDS)
-            location = geolocator.geocode(name, timeout=10)
-            if location:
-                cache[name] = [location.latitude, location.longitude]
-                print(f"    Geocoded (fallback): {name!r} → ({location.latitude:.4f}, {location.longitude:.4f})")
-                return location.latitude, location.longitude
-            else:
-                print(f"    WARNING: Could not geocode {name!r}")
-                cache[name] = None
-                return None, None
+            log.warning(f"  Could not geocode: {name!r}")
+            cache[name] = None
+            return None, None
     except (GeocoderTimedOut, GeocoderServiceError) as e:
-        print(f"    Geocoder error for {name!r}: {e}")
+        log.warning(f"  Geocoder error for {name!r}: {e}")
         cache[name] = None
         return None, None
 
 
 def main():
+    """
+    Main entry point. Geocodes all teams, computes distances and
+    longitude differences, writes enriched games CSV.
+    """
     os.makedirs("data", exist_ok=True)
 
-    # Load game data
     games = pd.read_csv(GAMES_PATH)
-    print(f"Loaded {len(games)} neutral-site games from {GAMES_PATH}")
+    log.info(f"Loaded {len(games)} games from {GAMES_PATH}")
 
-    # Load cache
-    cache = load_location_cache(LOCATIONS_CACHE)
+    cache = load_cache(LOCATIONS_CACHE)
+    geolocator = Nominatim(user_agent="ncaab_west_region_ds4320")
 
-    # Collect unique school names to geocode
     all_teams = set(games["winner"].dropna()) | set(games["loser"].dropna())
-    print(f"Unique teams to geocode: {len(all_teams)}")
+    log.info(f"Unique teams to locate: {len(all_teams)}")
 
-    geolocator = Nominatim(user_agent="ncaab_distance_project_ds4320")
-
-    # Geocode all teams
-    print("\nGeocoding team home arenas...")
+    # Pre-warm cache for all teams
     for team in sorted(all_teams):
-        if team not in cache:
-            geocode_entity(team, geolocator, cache)
-            save_location_cache(cache, LOCATIONS_CACHE)  # save after each to avoid losing progress
+        if team not in SCHOOL_LOCATIONS and team not in cache:
+            get_location(team, geolocator, cache)
+            save_cache(cache, LOCATIONS_CACHE)
 
-    save_location_cache(cache, LOCATIONS_CACHE)
-    print(f"\nGeocoding complete. Cache saved to {LOCATIONS_CACHE}")
+    save_cache(cache, LOCATIONS_CACHE)
+    log.info("Location lookup complete.")
 
-    # ── Compute distances ──────────────────────────────────────────────────────
-    # For neutral-site games we approximate the venue as the geographic midpoint
-    # between the two teams' home locations. This is a reasonable proxy when
-    # the actual venue city is not available in the scraped data.
-    # If you have venue city data, replace midpoint logic with venue geocoding.
-
-    print("\nComputing distances...")
+    # ── Compute per-game distance and longitude features ──────────────────
     results = []
-
     for _, row in games.iterrows():
         winner, loser = row["winner"], row["loser"]
 
-        w_lat, w_lon = geocode_entity(winner, geolocator, cache) if winner not in cache else (
-            (cache[winner][0], cache[winner][1]) if cache[winner] else (None, None)
-        )
-        l_lat, l_lon = geocode_entity(loser, geolocator, cache) if loser not in cache else (
-            (cache[loser][0], cache[loser][1]) if cache[loser] else (None, None)
-        )
+        w_lat, w_lon = get_location(winner, geolocator, cache)
+        l_lat, l_lon = get_location(loser,  geolocator, cache)
 
-        # Estimate venue as midpoint (replace with actual venue coords if available)
-        if all(x is not None for x in [w_lat, w_lon, l_lat, l_lon]):
-            venue_lat = (w_lat + l_lat) / 2
-            venue_lon = (w_lon + l_lon) / 2
-            winner_dist = haversine_miles(w_lat, w_lon, venue_lat, venue_lon)
-            loser_dist  = haversine_miles(l_lat, l_lon, venue_lat, venue_lon)
-            dist_diff   = winner_dist - loser_dist
+        # Venue lat/lon already set in script 01 from known tournament sites
+        v_lat = row.get("venue_lat")
+        v_lon = row.get("venue_lon")
+
+        if all(x is not None for x in [w_lat, w_lon, l_lat, l_lon, v_lat, v_lon]):
+            winner_dist = haversine_miles(w_lat, w_lon, v_lat, v_lon)
+            loser_dist  = haversine_miles(l_lat, l_lon, v_lat, v_lon)
+
+            # Longitude difference: negative = further west.
+            # winner_lon_diff > 0 means winner is east of loser (less western).
+            # For the hypothesis we want: does lower (more negative) winner_lon
+            # correlate with winning?
+            winner_lon_diff = w_lon - l_lon   # negative = winner further west
+            venue_lon_diff  = w_lon - float(v_lon)  # winner lon vs venue lon
         else:
-            venue_lat = venue_lon = winner_dist = loser_dist = dist_diff = None
+            winner_dist = loser_dist = winner_lon_diff = venue_lon_diff = None
 
         results.append({
             **row.to_dict(),
-            "winner_home_lat":  w_lat,
-            "winner_home_lon":  w_lon,
-            "loser_home_lat":   l_lat,
-            "loser_home_lon":   l_lon,
-            "venue_lat":        venue_lat,
-            "venue_lon":        venue_lon,
+            "winner_lat":       w_lat,
+            "winner_lon":       w_lon,
+            "loser_lat":        l_lat,
+            "loser_lon":        l_lon,
             "winner_dist_miles": winner_dist,
             "loser_dist_miles":  loser_dist,
-            "dist_diff_miles":   dist_diff,   # positive = winner traveled farther
+            "dist_diff_miles":   (winner_dist - loser_dist) if winner_dist is not None else None,
+            # Key hypothesis variable: negative = winner was further west than loser
+            "winner_lon_diff":   winner_lon_diff,
+            # How far west winner is relative to venue
+            "winner_venue_lon_diff": venue_lon_diff,
         })
 
     df_out = pd.DataFrame(results)
     df_out.to_csv(OUTPUT_GAMES, index=False)
+
     missing = df_out["winner_dist_miles"].isna().sum()
-    print(f"\nSaved {len(df_out)} games to {OUTPUT_GAMES}")
-    print(f"Games missing distance data: {missing} ({100*missing/len(df_out):.1f}%)")
-    print(df_out[["winner","loser","winner_dist_miles","loser_dist_miles","dist_diff_miles"]].head(10))
+    log.info(f"Saved {len(df_out)} games to {OUTPUT_GAMES}")
+    log.info(f"Missing distance data: {missing} ({100*missing/len(df_out):.1f}%)")
+    print(df_out[["winner", "loser", "winner_lon", "loser_lon",
+                  "winner_lon_diff", "winner_dist_miles", "loser_dist_miles"]].head(10).to_string())
 
 
 if __name__ == "__main__":
