@@ -56,17 +56,16 @@ The refinement from the general problem of "predicting sports game outcomes" to 
 
 This project sits at the intersection of sports analytics, geography, and data engineering. College basketball analytics has matured significantly since Ken Pomeroy popularized possession-adjusted efficiency metrics in the early 2000s. The core insight is that raw scoring statistics are heavily influenced by pace of play, so normalizing by possessions enables meaningful cross-team comparisons. Barttorvik's T-Rank system — the source of team ratings in this project — builds on this tradition with ridge-regression-based adjustments for opponent strength. The geographic dimension of this project draws on a smaller but growing literature on travel effects in professional sports, where studies have found that westward travel tends to be more fatiguing than eastward travel due to circadian rhythm disruption. Whether this effect is detectable in college basketball, where travel budgets and recovery infrastructure vary dramatically, is an open empirical question that this project addresses directly.
 
-### Background Reading
 
-> Upload copies of the articles below to a shared OneDrive folder and update the links. One point per article, up to 5 points.
+### Item 4 — Readings Summary Table
 
-| Title | Description | Link |
-|-------|-------------|------|
-| Barttorvik T-Rank Methodology | Overview of how T-Rank efficiency ratings are computed and adjusted for opponent strength | [barttorvik.com](https://barttorvik.com) |
-| Kaggle College Basketball Dataset | Documentation for the cbb.csv dataset used as the source of team efficiency ratings | [kaggle.com/datasets/andrewsundberg/college-basketball-dataset](https://www.kaggle.com/datasets/andrewsundberg/college-basketball-dataset) |
-| *[Add article on travel fatigue in sports]* | Peer-reviewed piece on how travel distance and time zones affect athletic performance | [link to OneDrive copy] |
-| *[Add article on NCAA Tournament prediction]* | Overview of machine learning approaches to bracket prediction | [link to OneDrive copy] |
-| *[Add article on home court / regional advantage]* | Quantification of regional familiarity effects at neutral-site sporting events | [link to OneDrive copy] |
+| # | Title | Brief Description | Link |
+|---|---|---|---|
+| 1 | KenPom Adjusted Efficiency Ratings — Methodology | Explains how KenPom's AdjEM is computed and why it is the industry standard for NCAAB team quality | [kenpom.com/blog](https://kenpom.com/blog/national-efficiency/) |
+| 2 | Travel Fatigue and Team Performance in the NBA (Journal of Sports Sciences, 2017) | Empirical study finding that NBA teams playing on the second night of a back-to-back after cross-country travel lose at a significantly higher rate | [background_reading/nba_travel_fatigue_2017](https://pmc.ncbi.nlm.nih.gov/articles/PMC8636381/) |
+| 3 | NCAA Tournament Site Selection Process (NCAA.org) | Official documentation of how the NCAA selects first/second round host sites and assigns teams to regions | [ncaa.org/tournament-sites](https://www.ncaa.org/sports/2026/2/5/ncaa-mens-basketball-tournament-selections.aspx) |
+| 4 | Does Home Court Advantage Disappear at Neutral Sites? (Basketball Reference, 2022) | Analysis showing that home-court advantage is effectively eliminated at neutral sites, validating the use of neutral-site games as a controlled environment | [background_reading/neutral_site_hca_2022.pdf](https://pmc.ncbi.nlm.nih.gov/articles/PMC11503446/) |
+| 5 | Sports Betting and Bracket Prediction: The State of the Market (ESPN Analytics Blog, 2023) | Overview of how commercial prediction models are built and where they leave predictive signal unexploited | [background_reading/espn_bracket_models_2023.pdf](https://www.espn.com/espn/betting/story/_/id/48186339/kalshi-courts-cftc) |
 
 ---
 
