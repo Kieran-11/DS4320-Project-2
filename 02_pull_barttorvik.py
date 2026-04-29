@@ -1,112 +1,129 @@
 """
 02_pull_barttorvik.py
 ---------------------
-Pulls team-season efficiency ratings from Barttorvik (T-Rank).
-Free, no API key required. Returns JSON directly from their endpoint.
-Outputs: data/barttorvik_ratings.csv
+Loads team efficiency ratings from the Kaggle college basketball dataset
+(cbb.csv) instead of scraping Barttorvik directly (which now blocks
+automated requests with a browser verification challenge).
 
-Dependencies: pip install requests pandas
+The cbb.csv dataset contains the same Barttorvik-derived metrics:
+ADJOE, ADJDE, BARTHAG, EFG_O, EFG_D, TOR, TORD, ORB, DRB, ADJ_T, WAB
+for every D-I team from 2013-2023.
+
+Input:  data/cbb.csv         (downloaded from Kaggle: andrewsundberg/college-basketball-dataset)
+Output: data/barttorvik_ratings.csv
+
+Dependencies: pip install pandas
 """
 
-import requests
 import pandas as pd
-import time
 import os
+import logging
+from pathlib import Path
 
 # ── Configuration ──────────────────────────────────────────────────────────────
-SEASONS = list(range(2015, 2025))   # match whatever years you scraped in 01_
+INPUT_PATH  = "data/cbb.csv"
 OUTPUT_PATH = "data/barttorvik_ratings.csv"
-SLEEP_SECONDS = 2
-# ───────────────────────────────────────────────────────────────────────────────
 
-# Barttorvik column names returned by the JSON endpoint (as of 2024).
-# The JSON returns a list of lists, so we name columns manually.
-COLUMN_NAMES = [
-    "rank",
-    "team",
-    "conf",
-    "record",
-    "adjoe",        # Adjusted Offensive Efficiency (points per 100 possessions)
-    "adjde",        # Adjusted Defensive Efficiency (points allowed per 100)
-    "barthag",      # Power rating (prob of beating avg D1 team)
-    "efg_pct",      # Effective FG%
-    "efg_d_pct",    # Effective FG% allowed
-    "tor",          # Turnover rate
-    "tord",         # Turnover rate forced
-    "orb",          # Offensive rebound rate
-    "drb",          # Defensive rebound rate
-    "ftr",          # Free throw rate
-    "ftrd",         # Free throw rate allowed
-    "two_pt_pct",   # 2-point %
-    "two_pt_d_pct", # 2-point % allowed
-    "three_pt_pct", # 3-point %
-    "three_pt_d_pct",# 3-point % allowed
-    "adj_tempo",    # Adjusted tempo (possessions per 40 min)
-    "wab",          # Wins above bubble
-]
+# ── Logging ────────────────────────────────────────────────────────────────────
+Path("logs").mkdir(exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+    handlers=[
+        logging.FileHandler("logs/02_pull_barttorvik.log", mode="w"),
+        logging.StreamHandler(),
+    ],
+)
+log = logging.getLogger("pull_barttorvik")
 
 
-def get_barttorvik_season(year: int) -> pd.DataFrame:
+def load_and_clean(path: str) -> pd.DataFrame:
     """
-    Fetches T-Rank data for all D1 teams in a given season.
-    'year' = ending year of the season (e.g. 2024 = 2023-24 season).
-    """
-    url = f"https://barttorvik.com/trank.php?year={year}&json=1"
-    print(f"  Fetching Barttorvik {year}: {url}")
+    Load cbb.csv and standardize column names to match the rest of the
+    pipeline (lowercase, barttorvik naming conventions).
 
+    The Kaggle dataset uses uppercase column names (ADJOE, ADJDE, etc.)
+    and calls the season column YEAR. We rename everything to match
+    what scripts 03, 04, and 05 expect.
+
+    Parameters
+    ----------
+    path : str
+        Path to cbb.csv.
+
+    Returns
+    -------
+    pd.DataFrame
+        Cleaned ratings with standardized column names.
+    """
     try:
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        print(f"  ERROR fetching {year}: {e}")
-        return pd.DataFrame()
+        df = pd.read_csv(path)
+        log.info(f"Loaded {len(df):,} rows from {path}")
+    except FileNotFoundError:
+        log.error(f"File not found: {path}. Make sure cbb.csv is in your data/ folder.")
+        raise
 
-    # data is a list of lists; each inner list is one team
-    records = []
-    for row in data:
-        if not isinstance(row, list):
-            continue
-        # Pad or trim to expected column count
-        padded = (row + [None] * len(COLUMN_NAMES))[:len(COLUMN_NAMES)]
-        records.append(dict(zip(COLUMN_NAMES, padded)))
+    # Rename columns to match pipeline conventions
+    df = df.rename(columns={
+        "TEAM":     "team",
+        "CONF":     "conf",
+        "G":        "games",
+        "W":        "wins",
+        "ADJOE":    "adjoe",
+        "ADJDE":    "adjde",
+        "BARTHAG":  "barthag",
+        "EFG_O":    "efg_pct",
+        "EFG_D":    "efg_d_pct",
+        "TOR":      "tor",
+        "TORD":     "tord",
+        "ORB":      "orb",
+        "DRB":      "drb",
+        "FTR":      "ftr",
+        "FTRD":     "ftrd",
+        "2P_O":     "two_p_o",
+        "2P_D":     "two_p_d",
+        "3P_O":     "three_p_o",
+        "3P_D":     "three_p_d",
+        "ADJ_T":    "adj_tempo",
+        "WAB":      "wab",
+        "POSTSEASON": "postseason",
+        "SEED":     "seed",
+        "YEAR":     "season",
+    })
 
-    df = pd.DataFrame(records)
-    df["season"] = year
-    print(f"  → {len(df)} teams for {year}")
+    # Convert numeric columns
+    numeric_cols = ["adjoe", "adjde", "barthag", "efg_pct", "efg_d_pct",
+                    "tor", "tord", "orb", "drb", "adj_tempo", "wab", "season"]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Add a rank column based on barthag within each season
+    df["rank"] = df.groupby("season")["barthag"].rank(ascending=False).astype(int)
+
+    # Drop rows missing key fields
+    before = len(df)
+    df = df.dropna(subset=["team", "season", "barthag", "adjoe", "adjde"])
+    log.info(f"Dropped {before - len(df)} rows with missing key fields")
+
     return df
 
 
 def main():
+    """
+    Main entry point. Loads cbb.csv, cleans it, and writes
+    the standardized ratings CSV.
+    """
     os.makedirs("data", exist_ok=True)
-    all_seasons = []
 
-    for year in SEASONS:
-        df = get_barttorvik_season(year)
-        if not df.empty:
-            all_seasons.append(df)
-        time.sleep(SLEEP_SECONDS)
+    df = load_and_clean(INPUT_PATH)
 
-    if not all_seasons:
-        print("No data collected.")
-        return
+    log.info(f"Seasons covered: {sorted(df['season'].unique())}")
+    log.info(f"Teams per season:\n{df.groupby('season').size().to_string()}")
 
-    combined = pd.concat(all_seasons, ignore_index=True)
-
-    # Numeric coercion
-    numeric_cols = [
-        "adjoe", "adjde", "barthag", "efg_pct", "efg_d_pct",
-        "tor", "tord", "orb", "drb", "ftr", "ftrd",
-        "two_pt_pct", "two_pt_d_pct", "three_pt_pct", "three_pt_d_pct",
-        "adj_tempo", "wab", "rank"
-    ]
-    for col in numeric_cols:
-        if col in combined.columns:
-            combined[col] = pd.to_numeric(combined[col], errors="coerce")
-
-    combined.to_csv(OUTPUT_PATH, index=False)
-    print(f"\nSaved {len(combined)} team-season rows to {OUTPUT_PATH}")
-    print(combined[["season", "team", "adjoe", "adjde", "barthag", "adj_tempo"]].head(10))
+    df.to_csv(OUTPUT_PATH, index=False)
+    log.info(f"Saved {len(df):,} team-season ratings to {OUTPUT_PATH}")
+    print(df.head(10).to_string())
 
 
 if __name__ == "__main__":
