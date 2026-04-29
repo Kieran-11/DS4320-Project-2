@@ -3,10 +3,15 @@
 **Executive Summary:** This repository contains a fully established secondary dataset and analysis pipeline built to test whether NCAA Tournament teams located further west than their opponent perform better in West Region games. Game results from the 2015–2025 NCAA Tournament West Region were manually collected from Sports-Reference, team-season efficiency ratings were sourced from the Kaggle college basketball dataset (Barttorvik-derived T-Rank metrics), and travel distances from each team's home campus to the known West Region venue were computed using geocoding and the haversine formula. The combined dataset was ingested into a MongoDB Atlas document database (`ncaab_west_region`). An analysis pipeline (Jupyter notebook) queries this database, engineers features centered on longitude difference as the key hypothesis variable, and applies machine learning classification to test whether geographic westerness predicts game outcomes after controlling for team quality and seeding.
 
 **Name:** Kieran Perdue
+
 **NetID:** rrx5eg
+
 **DOI:** [10.5281/zenodo.19898678](https://doi.org/10.5281/zenodo.19898678)
-**Press Release:** [press_release.md](press_release.md)
+
+**Press Release:** [press_release.md](Press_Release.md)
+
 **Pipeline:** [05_pipeline.ipynb](05_pipeline.ipynb)
+
 **License:** MIT — [LICENSE](LICENSE)
 
 ---
