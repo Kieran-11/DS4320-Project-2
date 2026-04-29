@@ -1,0 +1,35 @@
+# Credentials
+.env
+*.env
+
+# Generated data files — too large / contain PII
+data/raw_games.csv
+data/barttorvik_ratings.csv
+data/games_with_distance.csv
+data/school_locations.json
+
+# Logs
+logs/
+
+# Notebook figures output folder
+figures/
+05_pipeline_files/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
