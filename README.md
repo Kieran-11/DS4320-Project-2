@@ -4,7 +4,7 @@
 
 **Name:** Kieran Perdue
 **NetID:** rrx5eg
-**DOI:** [YOUR ZENODO DOI — create at https://zenodo.org]
+**DOI:** [10.5281/zenodo.19898678](https://doi.org/10.5281/zenodo.19898678)
 **Press Release:** [press_release.md](press_release.md)
 **Pipeline:** [05_pipeline.ipynb](05_pipeline.ipynb)
 **License:** MIT — [LICENSE](LICENSE)
